@@ -1,0 +1,107 @@
+Version 0.3
+
+    Date: December 18, 2022
+
+    Changes:
+
+    chat-client:
+
+        - fsync has now been removed from send_routine.
+
+    chat-server:
+
+        - In chat-server.c, the comment on line 67, has been changed
+          to the appropriate description, as SIGINT is sent by Ctrl-C, 
+          not Ctrl-D (the latter indicates EOF).
+
+        - If accept fails in the main thread, perror is called to print an error. 
+
+        - create_client has been changed to create_and_append_client to 
+          better represent that a client has been both created and appended
+          to the list of clients.
+
+        - For the same reasons as above, delete_client has been changed to
+           delete_and_free_client. 
+
+        - There is now a mutex lock for when the main thread adds a client,
+          to prevent adding a client while another thread deletes a client. 
+
+        - Issue with strtok has been found. It is because name in the 
+          Client struct is a char * that is set to point to token. Token is the 
+          result of strtok, which points to the first byte in buf after the specified
+          delimiter. As a result, when the contents of buf are replaced, token 
+          will still be pointing to the same area. Consequently, what the client
+          name points to will also change, depending on what was input into the buffer. 
+          To remedy this, we have changed how the server handles names, particularly
+          by making the client->name point to the buffer old name, which will 
+          hold a copied version of the token representing the name. 
+
+Version 0.2 
+
+    Date: December 18, 2022
+
+    Changes:
+
+    chat-client: 
+
+        - Removed global variable int flags. 
+
+        - Removed infinite while loop, instead calling pthread_join for 
+          both sending and receiving threads. 
+
+        - When send or receive meets their respective terminating conditions,
+          the program will print an informative message pertaining to said condition, 
+          close the conn_fd, and exit the entire program (client) instead of
+          the single thread. This is because the client must close on either case,
+          though we will be waiting for both threads concurrently with two calls to pthread_join().   
+
+        - Client now calls fsync(STDOUT_FILENO) instead of fflush(stdout).
+
+        - Changed special exit command to /quit, which will only
+          run if the user types /quit followed by new line 
+          (enter). /quitter or /quitts or any similar variant
+          will print as a regular message. Style is inherited from 
+          Internet Relay Chat (IRC).
+
+    chat-server: 
+
+        - If accept fails, continue will now be called to reiterate the loop instead 
+          of doing any subsequent actions (creating a client/spinning off a thread).
+
+        - Checking for nickname changes through "/nick" is now done appropriatetely
+          by checking for a space in between /nick and the name. If there is no space,
+          the message is treated like a regular message, e.g. /nickasdf will be sent 
+          as the following message if the user already has nickname user: 
+
+            /nickasdf
+            12:00:00 user: /nickasdf
+
+        - client_routine's code has been refactored to remove code duplication between
+          the various if else branches when calling prefix_time_to_msg and send_all_clients). 
+
+        - Threads are no longer killed, and client-handling threads will now return on their own.
+          As a result, thread_id has been removed from the struct and corresponding code, as it 
+          will no longer be needed to kill any deleted threads. 
+
+        - A list_mutex has been created to prevent threads from modifying the linked
+          list while on thread is traversing it. This mutex is locked and unlocked
+          in client_routine when sending messages and/or when a client is deleted.
+
+        - create_client now initializes name to NULL, which solves the previous
+          segfaults where the server starts, clients connect, exit, then another 
+          client(s) connects and tries to send a regular message. The particular
+          line that was breaking was line 220: if (client->name != NULL), as the name 
+          for the client was previously never initialized, not even to a NULL value,
+          causing a segfault. 
+
+        - prefix_time_to_msg now takes in a third parameter, dest_size, to ensure
+          that the destination has enough room for the data.
+
+    NOTE: 
+
+    In chat-server.c, in client_routine, we have made the if-branch that deals 
+    with the "/nick" command to still copy the buf into a temp buffer used 
+    only for strtok. When using buf directly, strtok butchers any following 
+    send and receive data, particularly with the username, which is changed
+    to the previous outputs in the buf (as we do not empty the buf, but simply
+    replace corresponding bytes and terminate with a NULL byte). 
